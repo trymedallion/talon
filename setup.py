@@ -24,7 +24,7 @@ class InstallCommand(install):
                 "talon.signature",
                 "talon.signature.*",
             ])
-            for not_required in ["numpy", "scipy", "scikit-learn==0.24.1"]:
+            for not_required in ["numpy", "scipy", "scikit-learn>=1.0.0"]:
                 dist.install_requires.remove(not_required)
 
 
@@ -40,6 +40,14 @@ setup(name='talon',
       cmdclass={
           'install': InstallCommand,
       },
+      classifiers=[
+          "Programming Language :: Python :: 3",
+          "Programming Language :: Python :: 3.10",
+          "Programming Language :: Python :: 3.11",
+          "Programming Language :: Python :: 3.12",
+          "Programming Language :: Python :: 3.13",
+      ],
+      python_requires=">=3.10",
       packages=find_packages(exclude=['tests', 'tests.*']),
       include_package_data=True,
       zip_safe=True,
@@ -49,16 +57,13 @@ setup(name='talon',
           "numpy",
           "scipy",
           "scikit-learn>=1.0.0",
-          "chardet",
-          "cchardet",
           "cssselect",
           "six",
           "html5lib",
           "joblib",
           ],
       tests_require=[
-          "mock",
-          "nose",
-          "coverage"
+          "pytest",
+          "coverage",
           ]
       )
