@@ -6,7 +6,7 @@ from __future__ import absolute_import
 import re
 from unittest.mock import Mock, patch
 
-from nose.tools import assert_false, assert_true, eq_, ok_
+from tests import assert_false, assert_true, eq_, ok_
 
 from tests.fixtures import (OLK_SRC_BODY_SECTION,
                             REPLY_QUOTATIONS_SHARE_BLOCK,
