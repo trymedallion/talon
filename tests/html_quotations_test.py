@@ -435,3 +435,40 @@ def test_remove_namespaces():
 
     assert_true("<o:p>" not in rendered)
     assert_true("<xmlns:o>" not in rendered)
+
+
+def test_remove_namespaces_empty_local_name_does_not_crash():
+    # <https://...> and <o:> coerce to tags with an empty local name.
+    # remove_namespaces must not raise ValueError: Empty tag name and must
+    # leave a valid tree.
+    html = """
+    <html>
+        <body>
+            <p>See <https://example.com/foo> here.</p>
+            <o:></o:>
+        </body>
+    </html>
+    """
+    tree = u.html_document_fromstring(html)
+    result = quotations.remove_namespaces(tree)  # must not raise
+    ok_(result is not None)
+    for el in result.iter():
+        if isinstance(el.tag, str):
+            ok_(el.tag != "")
+
+
+def test_extract_from_html_bracketed_url_with_quote():
+    # Reproduces Medallion Sentry BACKEND-1F23: a bracketed URL in the reply
+    # body. The blockquote is required so remove_namespaces() is reached.
+    msg_body = """
+    <html>
+        <body>
+            <p>Please review <https://example.com/foo> before Friday.</p>
+            <blockquote>On Tue, someone wrote: previous message</blockquote>
+        </body>
+    </html>
+    """
+    rendered = quotations.extract_from_html(msg_body)  # must not raise
+    ok_(rendered is not None)
+    assert_true("before Friday" in rendered)          # focal text survives
+    assert_true("previous message" not in rendered)   # quote removed

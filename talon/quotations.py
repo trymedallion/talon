@@ -559,7 +559,12 @@ def remove_namespaces(root):
         # If the tag includes a colon
         idx = child.tag.rfind("U0003A")
         if idx != -1:
-            child.tag = child.tag[idx+6:]
+            local_name = child.tag[idx+6:]
+            # Only strip when a non-empty local name remains. Tags like
+            # <https:> or <o:> have an empty local name, so stripping yields
+            # "" and lxml's .tag setter raises ValueError: Empty tag name.
+            if local_name:
+                child.tag = local_name
 
     return root
 
