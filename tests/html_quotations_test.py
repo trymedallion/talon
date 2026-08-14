@@ -435,3 +435,38 @@ def test_remove_namespaces():
 
     assert_true("<o:p>" not in rendered)
     assert_true("<xmlns:o>" not in rendered)
+
+
+def test_remove_namespaces_keeps_unusable_tag_names():
+    # A bracketed URL is a start tag whose name ends at the first "/", so it is
+    # named "https:". Dropping that prefix leaves nothing for lxml to accept, so
+    # the name has to stay as it is rather than raise out of the extraction.
+    msg_body = """
+    <html>
+        <body>
+            <div>Reply, see Office 365<https://go.microsoft.com/fwlink/?x=1></div>
+            <blockquote>thing</blockquote>
+        </body>
+    </html>
+    """
+
+    rendered = quotations.extract_from_html(msg_body)
+
+    assert_true("Reply" in rendered)
+
+
+def test_remove_namespaces_keeps_tag_names_that_cannot_open_a_name():
+    # Same guard, other failure: a prefix drop that would leave a name starting
+    # with a digit, which lxml rejects just as firmly as an empty one.
+    msg_body = """
+    <html>
+        <body>
+            <div>Reply<o:1>x</o:1></div>
+            <blockquote>thing</blockquote>
+        </body>
+    </html>
+    """
+
+    rendered = quotations.extract_from_html(msg_body)
+
+    assert_true("Reply" in rendered)

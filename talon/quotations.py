@@ -546,6 +546,12 @@ def remove_namespaces(root):
     if we don't remove the namespace the parser translates the tag name into a
     unicode representation. For example <o:p> becomes <oU0003Ap>
 
+    A tag name is left alone when dropping its prefix would not leave a usable
+    XML name behind, because lxml rejects the assignment and the whole extraction
+    raises. That happens whenever the colon is the last character of the name,
+    which a bracketed URL produces: the HTML5 tokenizer ends a tag name at the
+    first "/", so <https://host/path> is a start tag named "https:".
+
     See https://www.w3.org/TR/2011/WD-html5-20110525/syntax.html#start-tags
 
 
@@ -559,7 +565,12 @@ def remove_namespaces(root):
         # If the tag includes a colon
         idx = child.tag.rfind("U0003A")
         if idx != -1:
-            child.tag = child.tag[idx+6:]
+            local = child.tag[idx+6:]
+            # An XML name opens with a letter or an underscore. Every later
+            # character the parser already coerced into something legal, so the
+            # first one decides whether this rename can stand.
+            if local[:1].isalpha() or local[:1] == "_":
+                child.tag = local
 
     return root
 
