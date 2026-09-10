@@ -472,3 +472,51 @@ def test_extract_from_html_bracketed_url_with_quote():
     ok_(rendered is not None)
     assert_true("before Friday" in rendered)          # focal text survives
     assert_true("previous message" not in rendered)   # quote removed
+
+
+def test_deeply_nested_html_does_not_exceed_recursion_limit():
+    # Long Outlook reply chains produce thousands of properly balanced nested
+    # <div>s. html5lib does not cap tree depth, so the checkpoint walk must not
+    # recurse once per level or it blows Python's default recursion limit.
+    depth = 3000
+    msg_body = ("<html><body>" + "<div>" * depth + "hello" + "</div>" * depth +
+                "</body></html>")
+
+    result = quotations.extract_from_html(msg_body)
+
+    ok_("hello" in result)
+
+
+def test_checkpoint_walk_handles_deep_trees():
+    depth = 3000
+    html_tree = u.html_document_fromstring(
+        "<html><body>" + "<div>" * depth + "hello" + "</div>" * depth +
+        "<div id='quoted'>quoted</div></body></html>")
+    # html, head, body, `depth` nested divs and one quoted div; each element
+    # gets a text checkpoint and a tail checkpoint.
+    expected_checkpoints = 2 * (3 + depth + 1)
+
+    number_of_checkpoints = quotations.html_quotations.add_checkpoint(
+        html_tree, 0)
+
+    eq_(expected_checkpoints, number_of_checkpoints)
+
+    # Mark only the quoted div's checkpoints (text on entry, tail on exit) as
+    # quotation and make sure the deletion walk removes just that element.
+    quoted = html_tree.xpath("//*[@id='quoted']")[0]
+    quoted_checkpoints = [
+        int(i[4:-4]) for i in
+        quotations.html_quotations.CHECKPOINT_PATTERN.findall(
+            quoted.text + quoted.tail)]
+    quotation_checkpoints = [False] * number_of_checkpoints
+    for checkpoint in quoted_checkpoints:
+        quotation_checkpoints[checkpoint] = True
+
+    counter, root_in_quotation = (
+        quotations.html_quotations.delete_quotation_tags(
+            html_tree, 0, quotation_checkpoints))
+
+    eq_(number_of_checkpoints, counter)
+    assert_false(root_in_quotation)
+    eq_([], html_tree.xpath("//*[@id='quoted']"))
+    ok_("hello" in u.html_tree_to_text(html_tree))
