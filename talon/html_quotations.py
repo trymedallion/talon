@@ -18,63 +18,85 @@ RE_FWD = re.compile("^[-]+[ ]*Forwarded message[ ]*[-]+$", re.I | re.M)
 
 
 def add_checkpoint(html_note, counter):
-    """Recursively adds checkpoints to html tree.
+    """Adds checkpoints to html tree.
+
+    Each element gets one checkpoint appended to its ``.text`` (numbered on
+    entry, before its children) and one appended to its ``.tail`` (numbered
+    after all of its descendants). The tree is walked with an explicit stack
+    rather than recursion so that arbitrarily deep trees (e.g. long Outlook
+    reply chains with thousands of nested ``<div>``s) do not exhaust Python's
+    recursion limit.
     """
-    if html_note.text:
-        html_note.text = (html_note.text + CHECKPOINT_PREFIX +
-                          str(counter) + CHECKPOINT_SUFFIX)
-    else:
-        html_note.text = (CHECKPOINT_PREFIX + str(counter) +
-                          CHECKPOINT_SUFFIX)
-    counter += 1
-
-    for child in html_note.iterchildren():
-        counter = add_checkpoint(child, counter)
-
-    if html_note.tail:
-        html_note.tail = (html_note.tail + CHECKPOINT_PREFIX +
-                          str(counter) + CHECKPOINT_SUFFIX)
-    else:
-        html_note.tail = (CHECKPOINT_PREFIX + str(counter) +
-                          CHECKPOINT_SUFFIX)
-    counter += 1
+    # Each stack entry is (element, children_visited).
+    stack = [(html_note, False)]
+    while stack:
+        element, children_visited = stack.pop()
+        if not children_visited:
+            element.text = ((element.text or '') + CHECKPOINT_PREFIX +
+                            str(counter) + CHECKPOINT_SUFFIX)
+            counter += 1
+            # Re-visit this element once its subtree is done to stamp the tail.
+            stack.append((element, True))
+            # Push children in reverse so they pop in document order.
+            for child in element.iterchildren(reversed=True):
+                stack.append((child, False))
+        else:
+            element.tail = ((element.tail or '') + CHECKPOINT_PREFIX +
+                            str(counter) + CHECKPOINT_SUFFIX)
+            counter += 1
 
     return counter
 
 
 def delete_quotation_tags(html_note, counter, quotation_checkpoints):
     """Deletes tags with quotation checkpoints from html tree.
+
+    Mirrors the numbering of :func:`add_checkpoint`: the ``.text`` checkpoint
+    is consumed on entry and the ``.tail`` checkpoint after all descendants.
+    An element is "in quotation" only if both its own checkpoints and all of
+    its descendants' checkpoints are marked; children in quotation are removed
+    from a parent that is not itself in quotation. Walks the tree with an
+    explicit stack rather than recursion so deep trees do not exhaust Python's
+    recursion limit.
+
+    Returns ``(counter, tag_in_quotation)`` for ``html_note``.
     """
-    tag_in_quotation = True
+    # A frame is a mutable list:
+    #   [element, tag_in_quotation, quotation_children, parent_frame]
+    root_frame = [html_note, True, [], None]
+    # Each stack entry is (frame, children_visited).
+    stack = [(root_frame, False)]
+    while stack:
+        frame, children_visited = stack.pop()
+        element = frame[0]
+        if not children_visited:
+            if quotation_checkpoints[counter]:
+                element.text = ''
+            else:
+                frame[1] = False
+            counter += 1
 
-    if quotation_checkpoints[counter]:
-        html_note.text = ''
-    else:
-        tag_in_quotation = False
-    counter += 1
+            stack.append((frame, True))
+            for child in element.iterchildren(reversed=True):
+                stack.append(([child, True, [], frame], False))
+        else:
+            if quotation_checkpoints[counter]:
+                element.tail = ''
+            else:
+                frame[1] = False
+            counter += 1
 
-    quotation_children = []  # Children tags which are in quotation.
-    for child in html_note.iterchildren():
-        counter, child_tag_in_quotation = delete_quotation_tags(
-            child, counter,
-            quotation_checkpoints
-        )
-        if child_tag_in_quotation:
-            quotation_children.append(child)
+            tag_in_quotation = frame[1]
+            if tag_in_quotation:
+                parent_frame = frame[3]
+                if parent_frame is not None:
+                    parent_frame[2].append(element)
+            else:
+                # Remove quotation children.
+                for child in frame[2]:
+                    element.remove(child)
 
-    if quotation_checkpoints[counter]:
-        html_note.tail = ''
-    else:
-        tag_in_quotation = False
-    counter += 1
-
-    if tag_in_quotation:
-        return counter, tag_in_quotation
-    else:
-        # Remove quotation children.
-        for child in quotation_children:
-            html_note.remove(child)
-        return counter, tag_in_quotation
+    return counter, root_frame[1]
 
 
 def cut_gmail_quote(html_message):
